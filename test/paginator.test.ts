@@ -81,6 +81,19 @@ describe('Paginator — fin por página vacía o repetida (R-03, sin loop infini
     await expect(juntar(it)).rejects.toBeInstanceOf(PaginaNoParseable);
   });
 
+  it('total con duplicados: no marca falso incompleto ni pide página de más', async () => {
+    // El sitio declara 4 (contó un doc dos veces); hay 3 únicos. El conteo BRUTO (2+2=4)
+    // alcanza el total en la 2ª página → para limpio, sin pedir una 3ª ni lanzar PaginaNoParseable.
+    const src = fakeSource([
+      pagina([uuid(1), uuid(2)], 4),
+      pagina([uuid(2), uuid(3)]), // uuid(2) es duplicado
+      pagina([]), // no debería pedirse; si se pidiera, sería un falso PaginaNoParseable
+    ]);
+    const pags = await juntar(new Paginator(src).paginas({}, { maxPages: null }));
+    expect(pags).toHaveLength(2);
+    expect(pags[1]?.haySiguiente).toBe(false);
+  });
+
   it('shell JSF vacía (con ViewState) ANTES del total → PaginaNoParseable, no fin (H1)', async () => {
     // El servidor degrada a la shell vacía al perder la sesión: TRAE ViewState pero 0 docs.
     // Como el total (5) no se alcanzó, es truncamiento, no fin de resultados.

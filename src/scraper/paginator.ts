@@ -51,9 +51,12 @@ export class Paginator {
   ): AsyncIterable<ResultadoPagina> {
     const desde = Math.max(1, opts.desde ?? 1);
     let total: number | null = null;
-    let acumulado = 0;
-    // Ids vistos en TODA la corrida: detecta ciclos de cualquier período, no solo repetición
-    // de la página inmediatamente anterior (garantía real de "sin loop infinito").
+    // Conteo BRUTO de documentos vistos (incluye duplicados entre páginas): es lo comparable
+    // contra el `total` que declara el sitio, que también es bruto. Usar los únicos aquí daría
+    // falsos "incompleta" si el sitio repite un doc en varias páginas.
+    let acumuladoBruto = 0;
+    // Ids únicos vistos en TODA la corrida: detecta ciclos de cualquier período (garantía real
+    // de "sin loop infinito") y sirve para no re-contar como progreso una página repetida.
     const vistos = new Set<string>();
 
     for (let n = desde; ; n++) {
@@ -68,9 +71,9 @@ export class Paginator {
       if (documentos.length === 0) {
         // Una página vacía puede ser fin legítimo O una pérdida de sesión/error a mitad de
         // paginación (el servidor JSF degrada a la shell vacía, que TAMBIÉN trae ViewState).
-        // Árbitro fiable: el total del sitio. Si esperábamos más y no llegó nada, es
-        // truncamiento (H1), no fin.
-        if (total !== null && acumulado < total) throw new PaginaNoParseable(n);
+        // Árbitro fiable: el total del sitio (bruto). Si aún faltaban documentos y no llegó
+        // nada, es truncamiento (H1), no fin.
+        if (total !== null && acumuladoBruto < total) throw new PaginaNoParseable(n);
         // Sin total conocido: si ni siquiera parece página de resultados, es un error claro.
         if (!esPaginaResultados(html)) throw new PaginaNoParseable(n);
         if (n > desde) return; // fin (b): paginación agotada (best-effort sin total)
@@ -82,10 +85,10 @@ export class Paginator {
       const nuevos = documentos.filter((d) => !vistos.has(d.id));
       if (nuevos.length === 0) return;
       for (const d of nuevos) vistos.add(d.id);
-      acumulado += nuevos.length;
+      acumuladoBruto += documentos.length; // bruto: cuenta también los duplicados de la página
 
-      // Fin (a): total del sitio alcanzado.
-      const haySiguiente = total === null ? true : acumulado < total;
+      // Fin (a): total del sitio (bruto) alcanzado.
+      const haySiguiente = total === null ? true : acumuladoBruto < total;
       yield { numero: n, documentos, haySiguiente };
       if (!haySiguiente) return;
     }

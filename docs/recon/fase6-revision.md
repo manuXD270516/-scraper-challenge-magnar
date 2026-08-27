@@ -65,7 +65,30 @@ Los 3 jueces re-revisaron el código reparado. **Juez 1: los 8 resueltos, sin re
 - Indentación del try de descarga corregida; `paginaEnCurso`→`ultimaCompletada` (número correcto).
 - `Content-Length` malformado/duplicado (`"123, 123"`→NaN) ya no rechaza un PDF válido. Test.
 
+## Ciclo 3 — re-verificación (Juez 2 y Juez 3)
+
+**Juez 3:** ambas medias del ciclo 2 resueltas; discriminador de errores sólido en ambas
+direcciones; sin regresiones. **Juez 2:** H1 cerrado en el camino principal, pero halló una
+media nueva del propio fix del ciclo 2:
+
+| # | Hallazgo (Juez 2) | Resolución |
+|---|-------------------|------------|
+| C3-1 | El fix de "total como árbitro" comparaba el total (conteo BRUTO del sitio) contra `acumulado` (ids ÚNICOS). Si el sitio declara duplicados (mismo doc en varias páginas), `acumulado < total` para siempre → tras la última página real pide una de más → si llega vacía, corrida falsamente INCOMPLETA (exit 2). | `paginator.ts`: se introduce `acumuladoBruto` (cuenta todos los docs, incl. duplicados) para comparar contra el total y decidir `haySiguiente`/truncamiento; el `Set` de únicos queda solo para dedup y la condición de ciclo. Test de "total con duplicados no marca falso incompleto". |
+
+## Residuales aceptados (bajos, documentados)
+
+- **Fallback sin total (`total === null`):** si `extraerTotal` no lee el conteo (formato distinto),
+  se cae a la heurística `esPaginaResultados`, que no distingue la shell de sesión perdida de una
+  página vacía legítima. Sesgo elegido: preferir un falso "incompleta" (seguro, sin pérdida de
+  datos) antes que truncamiento silencioso. El cierre de H1 depende de que el conteo del sitio sea
+  legible (lo es en el portal real: `formBuscador:optResultado`).
+- **Total inflado por el sitio + página post-final vacía:** puede producir un falso "incompleta".
+  Es seguro (no se pierden datos; el operador ve la señal). No se bloquea por esto.
+- **`TypeError` en la ruta de fetch** se envuelve como `RetryExhausted` → tratado como parada de
+  paginación (exit 2) en vez de abort (exit 1). Vive en la capa de retry, pre-existente.
+
 ## Estado del gate G6
-Sin hallazgos de severidad alta pendientes; todas las medias (ciclos 1 y 2) resueltas; bajas de
-bajo costo resueltas. Suite: **104 tests verdes**, build y lint limpios. Pendiente: re-corrida de
-los jueces afectados (Juez 2 y Juez 3) para confirmar el ciclo 2.
+Sin hallazgos de severidad **alta** en ningún ciclo; todas las **medias** de los 3 ciclos
+resueltas; bajas de bajo costo resueltas; residuales bajos documentados arriba. Suite:
+**105 tests verdes**, build y lint limpios. El loop convergió (ciclo 1: muchos; ciclo 2: 2 medias;
+ciclo 3: 1 media; ciclo 4: 0). **G6 PASA.**
