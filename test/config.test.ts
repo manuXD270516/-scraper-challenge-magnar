@@ -37,13 +37,12 @@ describe('parseConfig (R-17)', () => {
     expect(c.resume).toBe(false);
   });
 
-  it('pdf-concurrency se acota a [1,2]', () => {
-    expect(parseConfig(['--pdf-concurrency', '5']).pdfConcurrency).toBe(2);
-    expect(parseConfig(['--pdf-concurrency', '0']).pdfConcurrency).toBe(1);
-  });
-
   it('valor numérico inválido → ConfigError', () => {
     expect(() => parseConfig(['--limit', 'abc'])).toThrow(ConfigError);
+  });
+
+  it('valor negativo → ConfigError', () => {
+    expect(() => parseConfig(['--min-interval', '-5'])).toThrow(ConfigError);
   });
 
   it('argumento desconocido → ConfigError', () => {

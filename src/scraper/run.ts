@@ -5,7 +5,8 @@
  */
 import type { Config } from '../config.js';
 import type { Contadores, CriterioBusqueda, Documento } from '../types.js';
-import type { Paginator } from './paginator.js';
+import { PaginaNoParseable, type Paginator } from './paginator.js';
+import { validarDocumento } from './extractor.js';
 import type { PdfDownloader } from './pdf.js';
 import type { Store } from '../state/store.js';
 import type { Logger } from '../logger.js';
@@ -58,26 +59,47 @@ export async function ejecutarScrape(
 
   const inicio = deps.now();
   let restante = config.maxLimit;
+  // Última página que se intentó pedir (para registrar un fallo de paginación con su número).
+  let paginaEnCurso = desde;
 
-  for await (const pagina of paginator.paginas(criterioEfectivo, {
-    maxPages: config.maxPages,
-    desde,
-  })) {
-    contadores.paginas++;
-    // Una página cortada por --limit no se marca completada: al reanudar se re-visita y los
-    // docs ya hechos se saltan (idsProcesados). Así el límite no pierde el resto de la página.
-    let cortadaPorLimite = false;
-    for (const doc of pagina.documentos) {
-      if (restante !== null && restante <= 0) {
-        cortadaPorLimite = true;
-        break;
-      }
-      if (procesados.has(doc.id)) continue;
+  try {
+    for await (const pagina of paginator.paginas(criterioEfectivo, {
+      maxPages: config.maxPages,
+      desde,
+    })) {
+      paginaEnCurso = pagina.numero + 1;
+      contadores.paginas++;
+      // Una página cortada por --limit no se marca completada: al reanudar se re-visita y los
+      // docs ya hechos se saltan (idsProcesados). Así el límite no pierde el resto de la página.
+      let cortadaPorLimite = false;
+      for (const doc of pagina.documentos) {
+        if (restante !== null && restante <= 0) {
+          cortadaPorLimite = true;
+          break;
+        }
+        if (procesados.has(doc.id)) continue;
 
-      await deps.escribirLinea(JSON.stringify(doc));
-      contadores.documentos++;
+        await deps.escribirLinea(JSON.stringify(doc));
+        contadores.documentos++;
 
-      try {
+        // Validación de extracción (R-15): campos faltantes → warning + ledger etapa 'extract'.
+        // El doc NO se descarta de la salida; solo se marca para revisión.
+        const faltan = validarDocumento(doc);
+        if (faltan.length > 0) {
+          logger.warn(`Doc ${doc.id}: campos faltantes (${faltan.join(', ')})`);
+          if (faltan.includes('extraccion') || (faltan.includes('expediente') && faltan.includes('fecha'))) {
+            await store.registrarFallo({
+              id: doc.id,
+              url: doc.pdfUrl ?? '',
+              etapa: 'extract',
+              motivo: `campos faltantes: ${faltan.join(', ')}`,
+              intentos: 1,
+              timestamp: deps.ahoraIso(),
+            });
+          }
+        }
+
+        try {
         const r = await downloader.descargar(doc);
         if (r.estado === 'ok') {
           contadores.pdfsOk++;
@@ -113,21 +135,37 @@ export async function ejecutarScrape(
       if (restante !== null) restante--;
     }
 
-    // Checkpoint atómico al cerrar cada página (R-12). Si la página quedó cortada por límite,
-    // no se avanza el puntero de página completada (se re-visitará al reanudar).
-    await store.guardarEstado({
-      criterio: criterioEfectivo,
-      ultimaPaginaCompletada: cortadaPorLimite ? pagina.numero - 1 : pagina.numero,
-      idsProcesados: [...procesados],
-      contadores,
-      actualizado: deps.ahoraIso(),
-    });
-    logger.progresoPagina(pagina.numero, pagina.documentos.length, contadores);
+      // Checkpoint atómico al cerrar cada página (R-12). Si la página quedó cortada por límite,
+      // no se avanza el puntero de página completada (se re-visitará al reanudar).
+      await store.guardarEstado({
+        criterio: criterioEfectivo,
+        ultimaPaginaCompletada: cortadaPorLimite ? pagina.numero - 1 : pagina.numero,
+        idsProcesados: [...procesados],
+        contadores,
+        actualizado: deps.ahoraIso(),
+      });
+      logger.progresoPagina(pagina.numero, pagina.documentos.length, contadores);
 
-    if (restante !== null && restante <= 0) {
-      logger.info(`Límite de ${config.maxLimit} documentos alcanzado.`);
-      break;
+      if (restante !== null && restante <= 0) {
+        logger.info(`Límite de ${config.maxLimit} documentos alcanzado.`);
+        break;
+      }
     }
+  } catch (err) {
+    // Fallo de PAGINACIÓN (429 agotado, breaker, 403, ViewState, página no-parseable): no se
+    // pierde en silencio (R-09/R-15). Se registra en el ledger y la corrida se detiene de forma
+    // controlada, conservando el checkpoint de las páginas ya completadas.
+    const numero = err instanceof PaginaNoParseable ? err.numero : paginaEnCurso;
+    contadores.fallos++;
+    await store.registrarFallo({
+      id: `pagina-${numero}`,
+      url: '',
+      etapa: 'paginacion',
+      motivo: err instanceof Error ? err.message : String(err),
+      intentos: 1,
+      timestamp: deps.ahoraIso(),
+    });
+    logger.error(`Paginación detenida en la página ${numero}: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   logger.resumen(contadores, deps.now() - inicio, null);

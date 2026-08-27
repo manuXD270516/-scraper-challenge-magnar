@@ -84,10 +84,23 @@ async function generarIndiceCsv(config: Config): Promise<number> {
   const jsonlPath = join(config.outDir, 'data', 'documentos.jsonl');
   if (!existsSync(jsonlPath)) return 0;
   const contenido = await readFile(jsonlPath, 'utf8');
-  const docs: Documento[] = contenido
-    .split('\n')
-    .filter((l) => l.trim().length > 0)
-    .map((l) => JSON.parse(l) as Documento);
+  const docs: Documento[] = [];
+  const vistos = new Set<string>();
+  for (const linea of contenido.split('\n')) {
+    if (linea.trim().length === 0) continue;
+    let doc: Documento;
+    try {
+      doc = JSON.parse(linea) as Documento;
+    } catch {
+      // Línea corrupta (p. ej. append interrumpido por kill -9): se salta, no aborta el índice.
+      continue;
+    }
+    // Deduplica por id: un kill entre append y checkpoint pudo dejar una línea repetida.
+    if (doc.id && !vistos.has(doc.id)) {
+      vistos.add(doc.id);
+      docs.push(doc);
+    }
+  }
   await writeFile(join(config.outDir, 'data', 'index.csv'), aCsv(docs), 'utf8');
   return docs.length;
 }

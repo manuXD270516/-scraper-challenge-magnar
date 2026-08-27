@@ -149,6 +149,25 @@ describe('integración end-to-end (offline con fakes)', () => {
     expect(c.documentos).toBe(2);
   });
 
+  it('fallo de paginación se registra en el ledger (etapa paginacion) y no crashea (R-09/R-15)', async () => {
+    const src = fuente((n) => (n === 1 ? pagina([uid(1)]) : '<html><body>error</body></html>'));
+    const d = deps(src, async () => ({ status: 200, headers: {}, body: PDF }));
+    const c = await ejecutarScrape({}, cfg(), d);
+    expect(c.documentos).toBe(1); // la 1ª página se procesó
+    const fallos = await d.store.leerFallos();
+    expect(fallos.some((f) => f.etapa === 'paginacion')).toBe(true);
+  });
+
+  it('doc sin campos críticos → ledger etapa extract, pero SÍ va a la salida (R-15)', async () => {
+    const solo = `<form id="formBuscador"><a href="/jurisprudenciaweb/ServletDescarga?uuid=${uid(1)}">PDF</a></form>`;
+    const src = fuente((n) => (n === 1 ? solo : null));
+    const d = deps(src, async () => ({ status: 200, headers: {}, body: PDF }));
+    await ejecutarScrape({}, cfg(), d);
+    const fallos = await d.store.leerFallos();
+    expect(fallos.some((f) => f.etapa === 'extract')).toBe(true);
+    expect(readFileSync(join(dir, 'documentos.jsonl'), 'utf8')).toContain(uid(1));
+  });
+
   it('retry-failed recupera del ledger y limpia la entrada (R-10)', async () => {
     const store = new FileStore(dir);
     await store.registrarFallo({

@@ -9,7 +9,7 @@ import {
   JsfSession,
   ViewStateNotFound,
   AccessBlocked,
-  SessionResetExhausted,
+  ViewExpired,
 } from '../src/jsf/session.js';
 import type { HttpClient } from '../src/http/client.js';
 import type { HttpResponse } from '../src/types.js';
@@ -91,27 +91,11 @@ describe('JsfSession (R-13)', () => {
     expect(s.viewState).toBe('NUEVO:1'); // renovado
   });
 
-  it('ViewExpired → reset + replay con la sesión nueva', async () => {
-    const c = new FakeClient(
-      [ok(fx('inicio.html')), ok('<input name="javax.faces.ViewState" value="RESEED:2"/>')],
-      [ok('ViewExpiredException'), ok('<input name="javax.faces.ViewState" value="OK:3"/>')],
-    );
+  it('submit lanza ViewExpired ante ViewExpiredException (recuperación la hace el PageSource)', async () => {
+    const c = new FakeClient([ok(fx('inicio.html'))], [ok('...ViewExpiredException...')]);
     const s = new JsfSession({ client: c, seedUrl: 'seed' });
     await s.init();
-    const r = await s.submit('res', { a: '1' });
-    expect(r.data).toContain('OK:3');
-    // el segundo POST usó el ViewState re-sembrado
-    expect(c.postedViewStates[1]).toBe('RESEED:2');
-  });
-
-  it('ViewExpired persistente → SessionResetExhausted', async () => {
-    const c = new FakeClient(
-      [ok(fx('inicio.html')), ok(fx('inicio.html')), ok(fx('inicio.html'))],
-      [ok('ViewExpiredException'), ok('ViewExpiredException'), ok('ViewExpiredException')],
-    );
-    const s = new JsfSession({ client: c, seedUrl: 'seed' });
-    await s.init();
-    await expect(s.submit('res', { a: '1' })).rejects.toBeInstanceOf(SessionResetExhausted);
+    await expect(s.submit('res', { a: '1' })).rejects.toBeInstanceOf(ViewExpired);
   });
 
   it('403 del WAF → AccessBlocked con Transaction ID', async () => {

@@ -41,11 +41,16 @@ export class HttpError extends Error {
 // ── Clasificación ────────────────────────────────────────────────────────────
 export type Clasificacion = 'retry-429' | 'retry-net' | 'no-retry';
 
+/** Único predicado de "el sitio me está limitando" (429 o 5xx). Fuente de verdad compartida. */
+export function esStatusLimitante(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
+}
+
 /** Clasifica un error para decidir la política. Un 429 se detecta específicamente (R-07). */
 export function clasificar(err: unknown): Clasificacion {
   if (err instanceof HttpError) {
     if (err.status === 429) return 'retry-429';
-    if (err.status >= 500 && err.status <= 599) return 'retry-net';
+    if (esStatusLimitante(err.status)) return 'retry-net';
     return 'no-retry'; // 4xx≠429: bug nuestro, al ledger.
   }
   // Errores de red/timeout (sin status HTTP) → política corta de red.
@@ -63,6 +68,13 @@ export interface PoliticaBackoff {
 export const POLITICA_429: PoliticaBackoff = { baseMs: 1_000, capMs: 60_000, maxAttempts: 5 };
 /** Política 5xx/red: corta. Topes por espera: 1000/2000 ms. */
 export const POLITICA_NET: PoliticaBackoff = { baseMs: 1_000, capMs: 60_000, maxAttempts: 3 };
+
+/**
+ * Tope absoluto para `Retry-After` (5 min). El servidor puede pedir esperas legítimas mayores
+ * que el cap del jitter, pero un header hostil/erróneo (p. ej. `Retry-After: 999999999`) no
+ * debe congelar el pipeline: se recorta a este máximo.
+ */
+export const RETRY_AFTER_MAX_MS = 300_000;
 
 export interface RetryDeps {
   sleep(ms: number): Promise<void>;
@@ -125,7 +137,8 @@ export async function retryWithBackoff<T>(op: () => Promise<T>, deps: RetryDeps)
       const retryAfter =
         err instanceof HttpError ? parseRetryAfter(err.retryAfter, deps.now()) : null;
       if (clasif === 'retry-429' && retryAfter !== null) {
-        esperaMs = retryAfter;
+        // Retry-After prevalece, pero acotado para no congelar el pipeline (header hostil).
+        esperaMs = Math.min(RETRY_AFTER_MAX_MS, retryAfter);
       } else {
         esperaMs = delayBackoff(politica, esperasHechas, deps.rng);
       }
@@ -207,10 +220,25 @@ export class CircuitBreaker {
     this.empujarVentana(false);
   }
 
+  /**
+   * ms hasta que el breaker permitiría un intento (0 si puede pasar ya). Sin efectos: sirve
+   * para que el pipeline PAUSE colectivamente durante el cooldown (R-11) en vez de fast-fallar.
+   */
+  msHastaProximoIntento(): number {
+    if (this.estado !== 'OPEN') return 0;
+    return Math.max(0, this.cooldownActual - (this.now() - this.abiertoDesde));
+  }
+
   /** `limitante` = 429/5xx (cuenta para abrir). 4xx≠429 no limita el circuito. */
   registrarFallo(limitante: boolean): void {
     if (this.estado === 'HALF_OPEN') {
-      this.abrir(); // sonda falló → re-abre con cooldown ×2
+      if (limitante) {
+        this.abrir(); // sonda falló por límite → re-abre con cooldown ×2
+      } else {
+        // Fallo no limitante (p. ej. 4xx nuestro) en la sonda: no penaliza el cooldown;
+        // se permite otra sonda sin duplicar el tiempo de espera.
+        this.sondaEnCurso = false;
+      }
       return;
     }
     if (!limitante) {
@@ -273,11 +301,12 @@ export class CircuitBreaker {
 // ── Rate limiter propio ──────────────────────────────────────────────────────
 /**
  * Espacia requests: intervalo mínimo ± jitter, concurrencia 1 (cortesía, R-16).
- * Serializa las llamadas: cada `schedule` espera su turno y respeta el gap desde la anterior.
+ * Serializa de verdad: encadena la espera Y la ejecución de `op` en una sola cola, de modo
+ * que nunca hay dos `op` solapadas aunque una dure más que el intervalo.
  */
 export class RateLimiter {
   private ultimoInicio = -Infinity;
-  private cola: Promise<void> = Promise.resolve();
+  private cola: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly minIntervalMs: number,
@@ -290,20 +319,25 @@ export class RateLimiter {
     return Math.max(0, Math.floor(this.minIntervalMs * jitter));
   }
 
-  /** Encola `op` respetando el intervalo mínimo entre inicios (concurrencia 1). */
+  /** Encola `op` respetando el intervalo mínimo entre inicios y serializando la ejecución. */
   async schedule<T>(op: () => Promise<T>): Promise<T> {
-    const turno = this.cola.then(async () => {
-      const ahora = this.deps.now();
-      const espera = this.ultimoInicio + this.gap() - ahora;
-      if (espera > 0) await this.deps.sleep(espera);
-      this.ultimoInicio = this.deps.now();
-    });
-    // La cola avanza aunque `op` falle; los errores los ve el llamador.
+    const anterior = this.cola;
+    const turno = anterior.then(
+      () => this.ejecutarConEspera(op),
+      () => this.ejecutarConEspera(op),
+    );
+    // La cola siguiente espera a que ESTE turno termine (incluida `op`) → concurrencia 1.
     this.cola = turno.then(
       () => undefined,
       () => undefined,
     );
-    await turno;
+    return turno;
+  }
+
+  private async ejecutarConEspera<T>(op: () => Promise<T>): Promise<T> {
+    const espera = this.ultimoInicio + this.gap() - this.deps.now();
+    if (espera > 0) await this.deps.sleep(espera);
+    this.ultimoInicio = this.deps.now();
     return op();
   }
 }

@@ -53,10 +53,13 @@ interface JsfSession {
 6. **Cookies persistentes entre requests.**
    Given `init()` que setea `JSESSIONID` · When se hace un segundo request · Then la cookie
    (incluido el sufijo `.jvmr-scjurispN`) se reenvía intacta.
-7. **Detección de ViewExpired → reset + replay (R-13).**
-   Given una respuesta con `ViewExpiredException` o redirect a página de error · When se
-   ejecuta un `submit()` · Then se llama `reset()` y se reintenta el paso; a la 3.ª falla
-   consecutiva se propaga error tipado `SessionResetExhausted` (no cuelga, no crash).
+7. **Detección de ViewExpired → error tipado (R-13).**
+   Given una respuesta con `ViewExpiredException` · When se ejecuta `submit()` · Then lanza
+   `ViewExpired` (no auto-recupera). **La recuperación** —re-sembrar la secuencia completa
+   init + búsqueda + página— es responsabilidad de `JsfPageSource`, que es quien conoce esa
+   secuencia; reintentar solo el último `submit` iría contra una sesión sin la búsqueda
+   sembrada (shell vacía). `JsfPageSource` reintenta hasta 2 veces re-sembrando todo; agotado,
+   propaga. (Corrección de Fase 6: antes el replay estaba en `submit`, con granularidad errónea.)
 
 ## Edge cases (doc 00 §3)
 - ViewState ausente en el HTML → error tipado `ViewStateNotFound` (no `undefined` silencioso).

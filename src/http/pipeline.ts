@@ -10,9 +10,11 @@
  */
 import {
   CircuitBreaker,
+  CircuitOpenError,
   HttpError,
   RateLimiter,
   RetryExhausted,
+  esStatusLimitante,
   retryWithBackoff,
   type RetryDeps,
 } from './resilience.js';
@@ -21,15 +23,16 @@ import type { HttpResponse } from '../types.js';
 
 /** ¿El error cuenta como "el sitio me limita" para el circuit breaker? */
 export function esLimitante(err: unknown): boolean {
-  if (err instanceof HttpError) return err.status === 429 || (err.status >= 500 && err.status <= 599);
+  if (err instanceof CircuitOpenError) return false; // ya está pausado, no re-cuenta
+  if (err instanceof HttpError) return esStatusLimitante(err.status);
   if (err instanceof RetryExhausted) return esLimitante(err.ultimoError);
   // Errores de red/timeout (sin status) también son limitantes.
-  return !(err instanceof Error && err.name === 'CircuitOpenError');
+  return true;
 }
 
 /** Convierte una respuesta 429/5xx en HttpError para disparar la política de retry. */
 function lanzarSiLimitante(resp: { status: number; headers: Record<string, string> }): void {
-  if (resp.status === 429 || (resp.status >= 500 && resp.status <= 599)) {
+  if (esStatusLimitante(resp.status)) {
     throw new HttpError(resp.status, resp.headers['retry-after']);
   }
 }
@@ -47,9 +50,13 @@ export class ResilientHttpClient implements HttpClient {
   }
 
   private async ejecutar<T>(op: () => Promise<T>): Promise<T> {
-    return this.rate.schedule(() =>
-      this.breaker.exec(() => retryWithBackoff(op, this.deps), esLimitante),
-    );
+    return this.rate.schedule(async () => {
+      // Si el breaker está OPEN, PAUSA colectiva hasta el fin del cooldown (R-11) en vez de
+      // fast-fallar cada request al ledger. Al despertar, exec deja pasar la sonda (HALF_OPEN).
+      const espera = this.breaker.msHastaProximoIntento();
+      if (espera > 0) await this.deps.sleep(espera);
+      return this.breaker.exec(() => retryWithBackoff(op, this.deps), esLimitante);
+    });
   }
 
   async get(url: string, headers?: Record<string, string>): Promise<HttpResponse> {

@@ -5,7 +5,7 @@
  * aislada aquí para ajustarla sin tocar el Paginator.
  */
 import type { PageSource } from './paginator.js';
-import type { JsfSession } from '../jsf/session.js';
+import { JsfSession, ViewExpired } from '../jsf/session.js';
 import { formBusqueda, formPagina } from '../jsf/forms.js';
 import type { CriterioBusqueda } from '../types.js';
 
@@ -19,6 +19,24 @@ export class JsfPageSource implements PageSource {
   ) {}
 
   async pagina(criterio: CriterioBusqueda, n: number): Promise<string | null> {
+    // Ante ViewExpired re-ejecuta la SECUENCIA COMPLETA (init + búsqueda + página), no solo el
+    // último submit: re-sembrar sin la búsqueda daría una shell vacía. Acotado a 2 recuperaciones.
+    let intentos = 0;
+    for (;;) {
+      try {
+        return await this.pedir(criterio, n);
+      } catch (err) {
+        if (err instanceof ViewExpired && intentos < 2) {
+          intentos++;
+          this.sembrada = false; // fuerza re-siembra completa en el reintento
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  private async pedir(criterio: CriterioBusqueda, n: number): Promise<string | null> {
     if (!this.sembrada) {
       await this.session.init(); // GET inicio → cookies + ViewState
       const primera = await this.session.submit(this.inicioUrl, formBusqueda(criterio, 1));

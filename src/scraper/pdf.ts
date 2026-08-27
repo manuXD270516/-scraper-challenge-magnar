@@ -27,14 +27,21 @@ export function slug(s: string | null | undefined, maxLen = 60): string {
     .slice(0, maxLen);
 }
 
-/** Nombre descriptivo: expediente_organo_fecha.pdf; fallback con uuid si no hay metadatos. */
+/**
+ * Nombre descriptivo y ÚNICO por documento: expediente_organo_fecha__<uuid8>.pdf. El sufijo
+ * uuid corto garantiza que dos documentos distintos con los mismos metadatos (mismo expediente,
+ * sala y fecha) NO colisionen ni se pisen (bug de idempotencia por nombre). Sin metadatos →
+ * documento_<uuid>.pdf. El uuid corto aporta unicidad; los metadatos aportan legibilidad
+ * (no es un id opaco, anti-criterio 8).
+ */
 export function nombreDescriptivo(doc: Documento): string {
+  const uuidCorto = doc.id.replace(/[^0-9a-fA-F]/g, '').slice(0, 8);
   const partes = [slug(doc.expediente), slug(doc.organo), doc.fecha ?? ''].filter(
     (p) => p.length > 0,
   );
-  let base = partes.join('_').slice(0, 120);
-  if (base.length === 0) base = `documento_${doc.id}`;
-  return `${base}.pdf`;
+  const base = partes.join('_').slice(0, 120);
+  if (base.length === 0) return `documento_${doc.id}.pdf`;
+  return `${base}__${uuidCorto}.pdf`;
 }
 
 /** Resuelve colisiones en una corrida: base.pdf → base-2.pdf → base-3.pdf … */
@@ -93,6 +100,11 @@ export class PdfDownloader {
     }
 
     if (resp.status !== 200) return { estado: 'fallo', motivo: `status-${resp.status}` };
+    // Respuesta truncada: el cuerpo no coincide con el Content-Length declarado.
+    const lenDeclarado = resp.headers['content-length'];
+    if (lenDeclarado !== undefined && Number(lenDeclarado) !== resp.body.length) {
+      return { estado: 'fallo', motivo: 'truncated' };
+    }
     if (!esPdfValido(resp.body)) return { estado: 'fallo', motivo: 'not-a-pdf' };
 
     // Escritura atómica: a .part y rename al validar (nunca un .pdf final a medias).

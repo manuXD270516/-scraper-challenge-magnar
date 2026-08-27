@@ -9,8 +9,8 @@
  */
 import type { CriterioBusqueda } from '../types.js';
 
-/** Tamaño de página observado en los tokens del formulario de búsqueda. */
-export const PAGE_SIZE = 20;
+/** Tamaño de página observado en los tokens del formulario de búsqueda del recon (`21`). */
+export const PAGE_SIZE = 21;
 
 /**
  * Form de la búsqueda inicial (siembra) desde inicio.xhtml. El ViewState lo añade JsfSession.

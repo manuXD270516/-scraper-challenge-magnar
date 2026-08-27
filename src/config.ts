@@ -65,9 +65,9 @@ export function parseConfig(argv: readonly string[], env: Env = {}): Config {
     if (tok.startsWith('--')) {
       const key = tok.slice(2);
       const next = argv[i + 1];
-      if (key === 'resume') {
-        flags.set('resume', true);
-      } else if (next === undefined || next.startsWith('--')) {
+      // Flags booleanos: no consumen el siguiente argumento.
+      const booleanos = new Set(['dry-run', 'no-resume']);
+      if (booleanos.has(key) || next === undefined || next.startsWith('--')) {
         flags.set(key, true);
       } else {
         flags.set(key, next);
@@ -83,6 +83,7 @@ export function parseConfig(argv: readonly string[], env: Env = {}): Config {
     if (typeof v !== 'string' || Number.isNaN(n)) {
       throw new ConfigError(`Flag --${name} espera un número, recibió: ${String(v)}`);
     }
+    if (n < 0) throw new ConfigError(`Flag --${name} no admite valores negativos: ${v}`);
     return n;
   };
 
@@ -101,10 +102,6 @@ export function parseConfig(argv: readonly string[], env: Env = {}): Config {
   const timeoutRaw = pick('timeout', 'TIMEOUT_MS');
   const outRaw = pick('out', 'OUT_DIR');
   const baseRaw = pick('base-url', 'BASE_URL');
-  const pdfConcRaw = pick('pdf-concurrency', 'PDF_CONCURRENCY');
-
-  const pdfConcurrency =
-    pdfConcRaw === undefined ? DEFAULTS.pdfConcurrency : Math.min(2, Math.max(1, num(pdfConcRaw, 'pdf-concurrency')));
 
   return {
     comando,
@@ -113,7 +110,8 @@ export function parseConfig(argv: readonly string[], env: Env = {}): Config {
     timeoutMs: timeoutRaw === undefined ? DEFAULTS.timeoutMs : num(timeoutRaw, 'timeout'),
     minIntervalMs: intervalRaw === undefined ? DEFAULTS.minIntervalMs : num(intervalRaw, 'min-interval'),
     jitterRatio: DEFAULTS.jitterRatio,
-    pdfConcurrency,
+    // Concurrencia de descargas fija en 1 (cortesía deliberada, dentro del rango 1–2 de D-2).
+    pdfConcurrency: DEFAULTS.pdfConcurrency,
     maxLimit: limitRaw === undefined ? DEFAULTS.maxLimit : num(limitRaw, 'limit'),
     maxPages: pagesRaw === undefined ? DEFAULTS.maxPages : num(pagesRaw, 'pages'),
     resume: flags.has('no-resume') ? false : DEFAULTS.resume,

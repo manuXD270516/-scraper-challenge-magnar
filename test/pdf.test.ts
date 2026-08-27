@@ -43,16 +43,26 @@ describe('slug (R-05)', () => {
 });
 
 describe('nombreDescriptivo (R-05)', () => {
-  it('expediente_organo_fecha.pdf', () => {
-    const d = doc({ expediente: '00123-2024', organo: 'Sala Civil Permanente', fecha: '2024-08-10' });
-    expect(nombreDescriptivo(d)).toBe('00123-2024_sala-civil-permanente_2024-08-10.pdf');
+  it('expediente_organo_fecha__<uuid8>.pdf', () => {
+    const d = doc({
+      id: '1d2b4adf-00bf-4a5b-ae43-55e5dd75f66e',
+      expediente: '00123-2024',
+      organo: 'Sala Civil Permanente',
+      fecha: '2024-08-10',
+    });
+    expect(nombreDescriptivo(d)).toBe('00123-2024_sala-civil-permanente_2024-08-10__1d2b4adf.pdf');
   });
   it('omite campos vacíos sin dejar separadores sueltos', () => {
-    const d = doc({ expediente: '00123-2024', organo: null, fecha: '2024-08-10' });
-    expect(nombreDescriptivo(d)).toBe('00123-2024_2024-08-10.pdf');
+    const d = doc({ id: 'aabbccdd-0000', expediente: '00123-2024', organo: null, fecha: '2024-08-10' });
+    expect(nombreDescriptivo(d)).toBe('00123-2024_2024-08-10__aabbccdd.pdf');
   });
   it('fallback a documento_<uuid> si no hay metadatos', () => {
     expect(nombreDescriptivo(doc({ id: 'abc' }))).toBe('documento_abc.pdf');
+  });
+  it('dos docs con MISMOS metadatos pero uuid distinto no colisionan (idempotencia por uuid)', () => {
+    const a = doc({ id: 'aaaaaaaa-1111', expediente: 'E1', organo: 'Sala', fecha: '2024-01-01' });
+    const b = doc({ id: 'bbbbbbbb-2222', expediente: 'E1', organo: 'Sala', fecha: '2024-01-01' });
+    expect(nombreDescriptivo(a)).not.toBe(nombreDescriptivo(b));
   });
 });
 
@@ -99,6 +109,16 @@ describe('PdfDownloader.descargar (R-04/R-05/R-12)', () => {
     }));
     const r = await dl.descargar(doc({ expediente: '1' }));
     expect(r).toEqual({ estado: 'fallo', motivo: 'not-a-pdf' });
+  });
+
+  it('rechaza un PDF truncado (Content-Length no coincide con el cuerpo)', async () => {
+    const dl = new PdfDownloader(dir, async () => ({
+      status: 200,
+      headers: { 'content-length': '999999' },
+      body: pdfReal, // 348 KB, no 999999
+    }));
+    const r = await dl.descargar(doc({ expediente: '1' }));
+    expect(r).toEqual({ estado: 'fallo', motivo: 'truncated' });
   });
 
   it('skip idempotente si el PDF ya existe y es válido (sin llamar al fetcher)', async () => {

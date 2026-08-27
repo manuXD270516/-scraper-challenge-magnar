@@ -20,8 +20,20 @@ export interface OpcionesPaginacion {
   desde?: number;
 }
 
-function hashIds(ids: string[]): string {
-  return ids.slice().sort().join('|');
+/** Una página que ni tiene documentos ni parece una página de resultados válida (error/login). */
+export class PaginaNoParseable extends Error {
+  constructor(readonly numero: number) {
+    super(`La página ${numero} no es una página de resultados válida (posible error/login/truncado)`);
+    this.name = 'PaginaNoParseable';
+  }
+}
+
+/**
+ * ¿El HTML parece una página de resultados del portal (no una página de error/login)?
+ * Marcadores estructurales estables: el form de búsqueda y/o el ViewState de JSF.
+ */
+export function esPaginaResultados(html: string): boolean {
+  return /formBuscador/.test(html) || /javax\.faces\.ViewState/.test(html);
 }
 
 export class Paginator {
@@ -40,7 +52,9 @@ export class Paginator {
     const desde = Math.max(1, opts.desde ?? 1);
     let total: number | null = null;
     let acumulado = 0;
-    let hashPrevio: string | null = null;
+    // Ids vistos en TODA la corrida: detecta ciclos de cualquier período, no solo repetición
+    // de la página inmediatamente anterior (garantía real de "sin loop infinito").
+    const vistos = new Set<string>();
 
     for (let n = desde; ; n++) {
       if (opts.maxPages !== null && n - desde >= opts.maxPages) return;
@@ -51,21 +65,22 @@ export class Paginator {
       if (total === null) total = extraerTotal(html);
       const documentos = extraer(html);
 
-      // Fin (b): página vacía tras haber empezado.
       if (documentos.length === 0) {
-        if (n > desde) return;
-        // Primera página vacía: no hay resultados; emite una página vacía y termina.
+        // Distinguir vacío LEGÍTIMO (fin de resultados) de página NO-parseable (error/login/
+        // truncado): si no parece página de resultados, es un fallo, no el fin (H1).
+        if (!esPaginaResultados(html)) throw new PaginaNoParseable(n);
+        if (n > desde) return; // fin (b): paginación agotada
         yield { numero: n, documentos, haySiguiente: false };
         return;
       }
 
-      const hash = hashIds(documentos.map((d) => d.id));
-      // Fin (b): página repetida (el sitio ignoró el avance) → evita loop infinito.
-      if (hashPrevio !== null && hash === hashPrevio) return;
-      hashPrevio = hash;
-      acumulado += documentos.length;
+      // Fin (b): la página no aporta ningún id nuevo (repetida o cíclica) → evita loop infinito.
+      const nuevos = documentos.filter((d) => !vistos.has(d.id));
+      if (nuevos.length === 0) return;
+      for (const d of nuevos) vistos.add(d.id);
+      acumulado += nuevos.length;
 
-      // Fin (a): total alcanzado.
+      // Fin (a): total del sitio alcanzado.
       const haySiguiente = total === null ? true : acumulado < total;
       yield { numero: n, documentos, haySiguiente };
       if (!haySiguiente) return;

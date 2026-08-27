@@ -78,27 +78,29 @@ export function extraer(html: string): Documento[] {
   });
 
   enlaces.each((_, el) => {
+    const $link = $(el);
+    const id = uuidDeElemento($link);
+    if (!id || vistos.has(id)) return;
+    vistos.add(id);
+
+    // El doc se construye con id + enlace ANTES de cosechar campos: aunque la cosecha falle,
+    // el documento y su PDF nunca se pierden (R-15, anti-criterio 6). El error se anota en el
+    // propio doc para que run.ts lo loguee y lo registre en el ledger (etapa 'extract').
+    const doc: Documento = {
+      id,
+      expediente: null,
+      organo: null,
+      fecha: null,
+      fechaTexto: null,
+      tipoResolucion: null,
+      materia: null,
+      sumilla: null,
+      partes: null,
+      pdfUrl: `/jurisprudenciaweb/ServletDescarga?uuid=${id}`,
+      camposExtra: {},
+    };
+
     try {
-      const $link = $(el);
-      const id = uuidDeElemento($link);
-      if (!id || vistos.has(id)) return;
-      vistos.add(id);
-
-      const doc: Documento = {
-        id,
-        expediente: null,
-        organo: null,
-        fecha: null,
-        fechaTexto: null,
-        tipoResolucion: null,
-        materia: null,
-        sumilla: null,
-        partes: null,
-        pdfUrl: `/jurisprudenciaweb/ServletDescarga?uuid=${id}`,
-        camposExtra: {},
-      };
-
-      // Cosecha de pares etiqueta/valor dentro del contenedor.
       const bloque = contenedor($, $link);
       bloque.find('tr').each((__, tr) => {
         const celdas = $(tr).children('td, th');
@@ -109,14 +111,27 @@ export function extraer(html: string): Documento[] {
           asignar(doc, etiqueta, valor);
         }
       });
-
-      documentos.push(doc);
-    } catch {
-      // Parsing defensivo: nunca dejar que una fila tumbe el proceso (R-15).
+    } catch (e) {
+      doc.camposExtra['_errorExtraccion'] = e instanceof Error ? e.message : String(e);
     }
+
+    documentos.push(doc);
   });
 
   return documentos;
+}
+
+/**
+ * Valida un documento contra el schema mínimo. Devuelve la lista de campos recomendados
+ * ausentes (vacía = OK). run.ts la usa para loguear un warning y registrar el doc en el ledger
+ * con etapa 'extract' (R-15) sin descartarlo de la salida.
+ */
+export function validarDocumento(doc: Documento): string[] {
+  const faltan: string[] = [];
+  if (!doc.expediente) faltan.push('expediente');
+  if (!doc.fecha && !doc.fechaTexto) faltan.push('fecha');
+  if (doc.camposExtra['_errorExtraccion']) faltan.push('extraccion');
+  return faltan;
 }
 
 function asignar(doc: Documento, etiqueta: string, valor: string): void {

@@ -9,6 +9,7 @@ import {
   parseRetryAfter,
   POLITICA_429,
   POLITICA_NET,
+  RETRY_AFTER_MAX_MS,
   CircuitBreaker,
   CircuitOpenError,
   RateLimiter,
@@ -91,6 +92,16 @@ describe('retryWithBackoff (R-08/R-09)', () => {
       return 'ok';
     }, deps);
     expect(sleeps).toEqual([7000]); // exacto, sin jitter
+  });
+
+  it('Retry-After hostil (enorme) se acota a RETRY_AFTER_MAX_MS', async () => {
+    const { deps, sleeps } = fakeDeps();
+    let n = 0;
+    await retryWithBackoff(async () => {
+      if (n++ < 1) throw new HttpError(429, '999999999');
+      return 'ok';
+    }, deps);
+    expect(sleeps).toEqual([RETRY_AFTER_MAX_MS]); // no congela el pipeline
   });
 
   it('5xx usa política corta (máx 3 intentos → 2 esperas)', async () => {
@@ -178,10 +189,33 @@ describe('CircuitBreaker (R-11)', () => {
     for (let i = 0; i < 10; i++) cb.registrarFallo(false);
     expect(cb.state).toBe('CLOSED');
   });
+
+  it('sonda NO limitante en HALF_OPEN no re-abre (permite otra sonda)', () => {
+    let t = 0;
+    const cb = new CircuitBreaker(undefined, () => t);
+    for (let i = 0; i < 5; i++) cb.registrarFallo(true);
+    t = 120_000;
+    cb.puedePasar(); // HALF_OPEN, sonda en curso
+    cb.registrarFallo(false); // fallo no limitante (bug nuestro)
+    expect(cb.state).toBe('HALF_OPEN'); // no penaliza
+    expect(cb.puedePasar()).toBe(true); // deja otra sonda
+  });
+
+  it('msHastaProximoIntento: 0 si CLOSED, >0 si OPEN dentro del cooldown', () => {
+    let t = 0;
+    const cb = new CircuitBreaker(undefined, () => t);
+    expect(cb.msHastaProximoIntento()).toBe(0);
+    for (let i = 0; i < 5; i++) cb.registrarFallo(true);
+    expect(cb.msHastaProximoIntento()).toBe(120_000);
+    t = 50_000;
+    expect(cb.msHastaProximoIntento()).toBe(70_000);
+    t = 120_000;
+    expect(cb.msHastaProximoIntento()).toBe(0);
+  });
 });
 
 describe('RateLimiter (R-16)', () => {
-  it('espacia el segundo inicio ≥ minInterval (jitter 0)', async () => {
+  it('espacia el segundo inicio exactamente minInterval; el primero no espera (jitter 0)', async () => {
     let t = 0;
     const sleeps: number[] = [];
     const deps: RetryDeps = {
@@ -195,6 +229,28 @@ describe('RateLimiter (R-16)', () => {
     const rl = new RateLimiter(2000, 0.5, deps);
     await rl.schedule(async () => 'a');
     await rl.schedule(async () => 'b');
-    expect(sleeps).toContain(2000);
+    expect(sleeps).toEqual([2000]); // primer inicio sin espera, segundo espaciado
+  });
+
+  it('serializa: dos schedule concurrentes no solapan sus op (concurrencia 1)', async () => {
+    let t = 0;
+    const deps: RetryDeps = {
+      sleep: async (ms) => {
+        t += ms;
+      },
+      rng: () => 0.5,
+      now: () => t,
+    };
+    const rl = new RateLimiter(0, 0, deps);
+    let activos = 0;
+    let maxActivos = 0;
+    const op = async (): Promise<void> => {
+      activos++;
+      maxActivos = Math.max(maxActivos, activos);
+      await Promise.resolve();
+      activos--;
+    };
+    await Promise.all([rl.schedule(op), rl.schedule(op), rl.schedule(op)]);
+    expect(maxActivos).toBe(1);
   });
 });

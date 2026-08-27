@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Paginator, type PageSource } from '../src/scraper/paginator.js';
+import { Paginator, PaginaNoParseable, esPaginaResultados, type PageSource } from '../src/scraper/paginator.js';
 import type { CriterioBusqueda, ResultadoPagina } from '../src/types.js';
 
 /** Genera una página HTML con `ids` documentos y un total opcional. */
@@ -61,6 +61,30 @@ describe('Paginator — fin por página vacía o repetida (R-03, sin loop infini
     const src = fakeSource([pagina([uuid(1), uuid(2)]), pagina([uuid(1), uuid(2)])]);
     const pags = await juntar(new Paginator(src).paginas({}, { maxPages: null }));
     expect(pags).toHaveLength(1); // la repetida no se emite
+  });
+
+  it('se detiene ante un CICLO de período 2 (p1,p2,p1,p2…) sin loop infinito', async () => {
+    // Sin total y sin maxPages: el único cortafuegos es "sin ids nuevos".
+    const src = fakeSource([
+      pagina([uuid(1), uuid(2)]),
+      pagina([uuid(3), uuid(4)]),
+      pagina([uuid(1), uuid(2)]), // vuelve al inicio del ciclo
+      pagina([uuid(3), uuid(4)]),
+    ]);
+    const pags = await juntar(new Paginator(src).paginas({}, { maxPages: null }));
+    expect(pags).toHaveLength(2); // p3 no aporta ids nuevos → fin
+  });
+
+  it('página no-parseable (error/login) lanza PaginaNoParseable, NO se toma como fin', async () => {
+    const src = fakeSource([pagina([uuid(1)]), '<html><body>403 Forbidden</body></html>']);
+    const it = new Paginator(src).paginas({}, { maxPages: null });
+    await expect(juntar(it)).rejects.toBeInstanceOf(PaginaNoParseable);
+  });
+
+  it('esPaginaResultados distingue resultados de página de error', () => {
+    expect(esPaginaResultados('<form id="formBuscador"></form>')).toBe(true);
+    expect(esPaginaResultados('<input name="javax.faces.ViewState"/>')).toBe(true);
+    expect(esPaginaResultados('<html>403 Forbidden</html>')).toBe(false);
   });
 
   it('primera página sin resultados → una página vacía y termina', async () => {

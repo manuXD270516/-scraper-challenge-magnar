@@ -18,7 +18,14 @@ export class ViewStateNotFound extends Error {
   }
 }
 export class SessionSeedFailed extends Error {}
-export class SessionResetExhausted extends Error {}
+/** La vista/sesión JSF expiró. La recuperación (re-sembrar la secuencia completa) es
+ * responsabilidad de quien conoce esa secuencia (JsfPageSource), no de submit. */
+export class ViewExpired extends Error {
+  constructor() {
+    super('javax.faces.ViewExpiredException: la vista JSF expiró');
+    this.name = 'ViewExpired';
+  }
+}
 export class AccessBlocked extends Error {
   constructor(readonly transactionId?: string) {
     super('Acceso bloqueado por el WAF (403)');
@@ -88,7 +95,9 @@ export class JsfSession {
 
   /**
    * POST del form añadiendo el ViewState vigente; renueva viewState desde la respuesta.
-   * Si detecta ViewExpired, hace reset() + replay del paso (hasta 2 veces).
+   * Ante ViewExpired lanza `ViewExpired`: la recuperación (re-sembrar init + búsqueda + página)
+   * la hace JsfPageSource, que es quien conoce la secuencia completa. Reintentar aquí solo el
+   * último submit iría contra una sesión sin la búsqueda sembrada (shell vacía).
    */
   async submit(
     url: string,
@@ -96,25 +105,17 @@ export class JsfSession {
     headers: Record<string, string> = {},
   ): Promise<HttpResponse> {
     if (!this._seeded) await this.init();
-    let intentos = 0;
-    for (;;) {
-      const conViewState = { ...form, 'javax.faces.ViewState': this._viewState };
-      const resp = await this.deps.client.postForm(url, conViewState, {
-        Referer: this.deps.seedUrl,
-        ...headers,
-      });
-      const tx = detectarBloqueo(resp);
-      if (tx !== null) throw new AccessBlocked(tx);
-      if (esViewExpired(resp)) {
-        intentos++;
-        if (intentos > 2) throw new SessionResetExhausted('ViewExpired persistente tras 2 resets');
-        await this.reset();
-        continue; // replay del paso con la sesión nueva
-      }
-      assertOk(resp); // 4xx/5xx≠expired → HttpError para la política de retry
-      this._viewState = parseViewState(resp.data);
-      return resp;
-    }
+    const conViewState = { ...form, 'javax.faces.ViewState': this._viewState };
+    const resp = await this.deps.client.postForm(url, conViewState, {
+      Referer: this.deps.seedUrl,
+      ...headers,
+    });
+    const tx = detectarBloqueo(resp);
+    if (tx !== null) throw new AccessBlocked(tx);
+    if (esViewExpired(resp)) throw new ViewExpired();
+    assertOk(resp); // 4xx/5xx≠expired → HttpError para la política de retry
+    this._viewState = parseViewState(resp.data);
+    return resp;
   }
 
   /** Re-siembra la sesión (nueva cookie + ViewState). */

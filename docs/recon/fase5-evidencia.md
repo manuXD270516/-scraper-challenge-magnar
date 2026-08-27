@@ -27,9 +27,9 @@ npm run scrape:dry     # = tsx src/index.ts --dry-run
 output/data/documentos.jsonl   3 líneas (una por doc, JSON válido, UTF-8 correcto)
 output/data/index.csv          cabecera + 3 filas (RFC 4180)
 output/state.json              checkpoint: ultimaPaginaCompletada=1, 3 idsProcesados
-output/pdfs/00123-2024-0-1801_sala-civil-permanente_2024-08-10.pdf   348 KB, %PDF
-output/pdfs/00987-2023-5-1801_sala-penal-transitoria_2023-12-03.pdf  348 KB, %PDF
-output/pdfs/00555-2022-0-0501.pdf                                    348 KB, %PDF
+output/pdfs/00123-2024-0-1801_sala-civil-permanente_2024-08-10__1d2b4adf.pdf   348 KB, %PDF
+output/pdfs/00987-2023-5-1801_sala-penal-transitoria_2023-12-03__471af24a.pdf  348 KB, %PDF
+output/pdfs/00555-2022-0-0501__537f0204.pdf                                    348 KB, %PDF
 ```
 
 ## Verificaciones (checklist G5)
@@ -37,8 +37,8 @@ output/pdfs/00555-2022-0-0501.pdf                                    348 KB, %PD
 - ✅ Campos obligatorios poblados; fila con "fecha ilegible" → `fecha=null`, `fechaTexto`
   preservado (parsing defensivo, R-15).
 - ✅ PDFs válidos: magic bytes `%PDF`, tamaño > 0.
-- ✅ Naming descriptivo: `expediente_organo_fecha.pdf`; el doc sin órgano/fecha cae a
-  `expediente.pdf` (no `download(3).pdf`).
+- ✅ Naming descriptivo y único: `expediente_organo_fecha__<uuid8>.pdf`; el doc sin órgano/fecha
+  cae a `expediente__<uuid8>.pdf` (no `download(3).pdf`). El uuid corto garantiza unicidad.
 - ✅ `documentos.jsonl` (una línea por doc) + `index.csv` bien formados; UTF-8 correcto
   (verificado leyendo el archivo como UTF-8; el mojibake solo aparece en la consola PS 5.1).
 - ✅ `state.json` coherente; re-ejecutar **no duplica** líneas del JSONL ni re-descarga PDFs
