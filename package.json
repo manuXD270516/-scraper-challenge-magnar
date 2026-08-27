@@ -12,6 +12,7 @@
     "start": "tsx src/index.ts",
     "scrape": "tsx src/index.ts",
     "scrape:sample": "tsx src/index.ts --limit 10 --pages 2",
+    "scrape:dry": "tsx src/index.ts --dry-run",
     "retry-failed": "tsx src/index.ts --retry-failed",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",

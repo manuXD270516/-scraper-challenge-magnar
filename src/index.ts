@@ -35,18 +35,36 @@ async function construirDeps(config: Config, logger: Logger): Promise<RunDeps> {
   await mkdir(pdfsDir, { recursive: true });
   const jsonlPath = join(dataDir, 'documentos.jsonl');
 
-  const inner = new AxiosHttpClient(config.timeoutMs);
-  const breaker = new CircuitBreaker();
-  const client = new ResilientHttpClient(inner, breaker, realDeps, {
-    minIntervalMs: config.minIntervalMs,
-    jitterRatio: config.jitterRatio,
-  });
+  let paginator: Paginator;
+  let fetcher: PdfFetcher;
 
-  const session = new JsfSession({ client, seedUrl: inicioUrlDe(config.baseUrl) });
-  const source = new JsfPageSource(session, inicioUrlDe(config.baseUrl), config.baseUrl);
-  const paginator = new Paginator(source);
+  if (config.dryRun) {
+    // Modo demo offline: sirve la fixture poblada y el PDF real; no toca el sitio (D-F0-2).
+    logger.info('DRY-RUN: corriendo contra fixtures locales (no se toca el sitio).');
+    const htmlFixture = await readFile(
+      join('test', 'fixtures', 'resultado-poblada-SINTETICA.html'),
+      'utf8',
+    );
+    const pdfFixture = await readFile(join('test', 'fixtures', 'servlet-descarga-sample.pdf'));
+    paginator = new Paginator({
+      async pagina(_c, n) {
+        return n === 1 ? htmlFixture : null;
+      },
+    });
+    fetcher = async () => ({ status: 200, headers: {}, body: pdfFixture });
+  } else {
+    const inner = new AxiosHttpClient(config.timeoutMs);
+    const breaker = new CircuitBreaker();
+    const client = new ResilientHttpClient(inner, breaker, realDeps, {
+      minIntervalMs: config.minIntervalMs,
+      jitterRatio: config.jitterRatio,
+    });
+    const session = new JsfSession({ client, seedUrl: inicioUrlDe(config.baseUrl) });
+    const source = new JsfPageSource(session, inicioUrlDe(config.baseUrl), config.baseUrl);
+    paginator = new Paginator(source);
+    fetcher = (url) => client.getBuffer(absoluto(config.baseUrl, url));
+  }
 
-  const fetcher: PdfFetcher = (url) => client.getBuffer(absoluto(config.baseUrl, url));
   const downloader = new PdfDownloader(pdfsDir, fetcher);
   const store = new FileStore(config.outDir);
 

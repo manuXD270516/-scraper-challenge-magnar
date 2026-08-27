@@ -19,6 +19,8 @@ export interface Config {
   maxPages: number | null;
   resume: boolean;
   logLevel: LogLevel;
+  /** Corrida offline contra fixtures (no toca el sitio): demo/smoke test. */
+  dryRun: boolean;
 }
 
 /** Portal peruano: decisión anclada (H-V1); ver docs/insumos y bitácora. */
@@ -36,6 +38,7 @@ export const DEFAULTS: Omit<Config, 'comando'> = {
   maxPages: null,
   resume: true,
   logLevel: 'info',
+  dryRun: false,
 };
 
 const LOG_LEVELS: readonly LogLevel[] = ['debug', 'info', 'warn', 'error'];
@@ -113,7 +116,8 @@ export function parseConfig(argv: readonly string[], env: Env = {}): Config {
     pdfConcurrency,
     maxLimit: limitRaw === undefined ? DEFAULTS.maxLimit : num(limitRaw, 'limit'),
     maxPages: pagesRaw === undefined ? DEFAULTS.maxPages : num(pagesRaw, 'pages'),
-    resume: DEFAULTS.resume,
+    resume: flags.has('no-resume') ? false : DEFAULTS.resume,
     logLevel,
+    dryRun: flags.has('dry-run'),
   };
 }

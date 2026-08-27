@@ -42,6 +42,7 @@ const cfg = (over: Partial<Config> = {}): Config => ({
   maxPages: null,
   resume: true,
   logLevel: 'error',
+  dryRun: false,
   ...over,
 });
 
