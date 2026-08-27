@@ -1,0 +1,26 @@
+{
+  "name": "scraper-challenge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scraper de jurisprudencia del Poder Judicial del Perú (TypeScript, sin navegador)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "scrape": "tsx src/index.ts",
+    "retry-failed": "tsx src/index.ts --retry-failed",
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

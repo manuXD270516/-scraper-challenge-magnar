@@ -1,0 +1,11 @@
+node_modules/
+dist/
+output/
+state.json
+failed.json
+*.log
+.env
+
+# Insumos privados: no se publican (ver CLAUDE.md, nota de publicación).
+# Se retiran de este ignore solo si se decide versionarlos en un remoto privado.
+docs/insumos/
