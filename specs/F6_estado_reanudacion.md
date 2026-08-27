@@ -53,6 +53,11 @@ interface Store {
    (0 descargas nuevas, 0 páginas re-pedidas) salvo lo pendiente.
 
 ## Edge cases
+- **Página cortada por `--limit`:** si el límite corta una página a la mitad, el checkpoint
+  NO avanza `ultimaPaginaCompletada` (se guarda `numero-1`); al reanudar se re-visita esa
+  página y los docs ya hechos se saltan por `idsProcesados`. Así el límite no pierde el resto.
+- **Kill real a mitad de página (sin checkpoint):** la red de seguridad es la idempotencia de
+  descarga (F4): aunque el id no llegara al `idsProcesados`, el PDF en disco hace `skip`.
 - `state.json`/`failed.json` inexistentes → arranque limpio (no error).
 - JSON corrupto (interrupción antigua antes de `.gitattributes`) → se detecta, se respalda a
   `.corrupt` y se arranca informando (no crash silencioso).

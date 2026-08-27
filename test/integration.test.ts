@@ -122,6 +122,23 @@ describe('integración end-to-end (offline con fakes)', () => {
     expect(descargas).toBe(2);
   });
 
+  it('interrupción a mitad de página → reanudar completa el resto sin duplicar (R-12)', async () => {
+    // Página única de 3 docs. Primera corrida se corta en 1 (simula kill tras el 1.º).
+    const src = fuente((n) => (n === 1 ? pagina([uid(1), uid(2), uid(3)]) : null));
+    const descargados: string[] = [];
+    const fetcher: PdfFetcher = async (url) => {
+      descargados.push(url);
+      return { status: 200, headers: {}, body: PDF };
+    };
+    await ejecutarScrape({}, cfg({ maxLimit: 1 }), deps(src, fetcher));
+    expect(descargados).toHaveLength(1); // solo el 1.º
+
+    // Reanuda sin límite: procesa 2.º y 3.º, no re-descarga el 1.º (idsProcesados + skip).
+    await ejecutarScrape({}, cfg(), deps(src, fetcher));
+    expect(descargados).toHaveLength(3); // 1 + 2, ninguno repetido
+    expect(new Set(descargados).size).toBe(3);
+  });
+
   it('--limit corta el número de documentos', async () => {
     const d = deps(
       fuente((n) => (n === 1 ? pagina([uid(1), uid(2), uid(3), uid(4)]) : null)),

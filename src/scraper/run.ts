@@ -64,8 +64,14 @@ export async function ejecutarScrape(
     desde,
   })) {
     contadores.paginas++;
+    // Una página cortada por --limit no se marca completada: al reanudar se re-visita y los
+    // docs ya hechos se saltan (idsProcesados). Así el límite no pierde el resto de la página.
+    let cortadaPorLimite = false;
     for (const doc of pagina.documentos) {
-      if (restante !== null && restante <= 0) break;
+      if (restante !== null && restante <= 0) {
+        cortadaPorLimite = true;
+        break;
+      }
       if (procesados.has(doc.id)) continue;
 
       await deps.escribirLinea(JSON.stringify(doc));
@@ -107,10 +113,11 @@ export async function ejecutarScrape(
       if (restante !== null) restante--;
     }
 
-    // Checkpoint atómico al cerrar cada página (R-12).
+    // Checkpoint atómico al cerrar cada página (R-12). Si la página quedó cortada por límite,
+    // no se avanza el puntero de página completada (se re-visitará al reanudar).
     await store.guardarEstado({
       criterio: criterioEfectivo,
-      ultimaPaginaCompletada: pagina.numero,
+      ultimaPaginaCompletada: cortadaPorLimite ? pagina.numero - 1 : pagina.numero,
       idsProcesados: [...procesados],
       contadores,
       actualizado: deps.ahoraIso(),
