@@ -1,0 +1,68 @@
+<!--
+  FIXTURE SINTÉTICA (no es una captura real del sitio).
+  Motivo: no existe captura pública de resultado.xhtml poblado (deuda D-F0-1); el WAF
+  bloquea el acceso desde esta red. Se construye a partir de la estructura REAL observada
+  en resultado-sin-sesion.html (contenedores formBuscador:panel / panealJur) y del hecho
+  confirmado de que cada documento se descarga por ServletDescarga?uuid=<UUID>.
+  El extractor está anclado a ese enlace, no a esta maquetación concreta: cuando llegue la
+  fixture real solo se ajusta el mapeo de etiquetas, no el diseño.
+-->
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <body>
+    <form id="formBuscador" name="formBuscador">
+      <input type="hidden" name="javax.faces.ViewState" value="123:456" />
+      <div class="container">
+        <span id="formBuscador:optResultado" class="Titulos">Se encontraron 3 resultados</span>
+      </div>
+      <table id="formBuscador:panealJur">
+        <tbody>
+          <tr>
+            <td>
+              <div class="resolucion">
+                <table class="detalle">
+                  <tr><td class="lbl">Expediente:</td><td class="val">00123-2024-0-1801</td></tr>
+                  <tr><td class="lbl">Órgano Jurisdiccional:</td><td class="val">Sala Civil Permanente</td></tr>
+                  <tr><td class="lbl">Fecha:</td><td class="val">10/08/2024</td></tr>
+                  <tr><td class="lbl">Tipo de Resolución:</td><td class="val">Sentencia</td></tr>
+                  <tr><td class="lbl">Materia:</td><td class="val">Nulidad de acto jurídico</td></tr>
+                  <tr><td class="lbl">Sumilla:</td><td class="val">Recurso de casación declarado fundado.</td></tr>
+                  <tr><td class="lbl">Partes:</td><td class="val">GARCÍA vs. BANCO XYZ</td></tr>
+                </table>
+                <a href="/jurisprudenciaweb/ServletDescarga?uuid=1d2b4adf-00bf-4a5b-ae43-55e5dd75f66e">
+                  Descargar PDF
+                </a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div class="resolucion">
+                <table class="detalle">
+                  <tr><td class="lbl">Expediente:</td><td class="val">00987-2023-5-1801</td></tr>
+                  <tr><td class="lbl">Órgano Jurisdiccional:</td><td class="val">Sala Penal Transitoria</td></tr>
+                  <tr><td class="lbl">Fecha:</td><td class="val">03/12/2023</td></tr>
+                  <tr><td class="lbl">Tipo de Resolución:</td><td class="val">Auto</td></tr>
+                  <tr><td class="lbl">Materia:</td><td class="val">Hurto agravado</td></tr>
+                  <tr><td class="lbl">Sumilla:</td><td class="val">Se confirma la resolución apelada.</td></tr>
+                </table>
+                <input type="image" src="../imagen/btn-descarga.png"
+                  onclick="window.location='/jurisprudenciaweb/ServletDescarga?uuid=471af24a-bbf6-4792-ae80-9d42a13ff266';return false" />
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div class="resolucion">
+                <table class="detalle">
+                  <tr><td class="lbl">Expediente:</td><td class="val">00555-2022-0-0501</td></tr>
+                  <tr><td class="lbl">Fecha:</td><td class="val">fecha ilegible</td></tr>
+                </table>
+                <a href="/jurisprudenciaweb/ServletDescarga?uuid=537f0204-1b86-4200-9381-a6c5c04d098f">PDF</a>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </form>
+  </body>
+</html>
