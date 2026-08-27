@@ -8,19 +8,30 @@
     "node": ">=20"
   },
   "scripts": {
-    "scrape": "tsx src/index.ts",
-    "retry-failed": "tsx src/index.ts --retry-failed",
     "build": "tsc --noEmit",
-    "test": "vitest run"
+    "start": "tsx src/index.ts",
+    "scrape": "tsx src/index.ts",
+    "scrape:sample": "tsx src/index.ts --limit 10 --pages 2",
+    "retry-failed": "tsx src/index.ts --retry-failed",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "axios": "^1.7.9",
-    "cheerio": "^1.0.0"
+    "axios-cookiejar-support": "^5.0.5",
+    "cheerio": "^1.0.0",
+    "tough-cookie": "^5.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.19.0",
     "vitest": "^2.1.0"
   }
 }
