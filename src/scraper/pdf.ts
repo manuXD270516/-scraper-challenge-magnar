@@ -100,9 +100,14 @@ export class PdfDownloader {
     }
 
     if (resp.status !== 200) return { estado: 'fallo', motivo: `status-${resp.status}` };
-    // Respuesta truncada: el cuerpo no coincide con el Content-Length declarado.
-    const lenDeclarado = resp.headers['content-length'];
-    if (lenDeclarado !== undefined && Number(lenDeclarado) !== resp.body.length) {
+    // Respuesta truncada: el cuerpo no coincide con el Content-Length declarado. Se ignora un
+    // header ausente o malformado (p. ej. duplicado "123, 123" → NaN) para no rechazar PDFs válidos.
+    const lenDeclarado = Number(resp.headers['content-length']);
+    if (
+      resp.headers['content-length'] !== undefined &&
+      !Number.isNaN(lenDeclarado) &&
+      lenDeclarado !== resp.body.length
+    ) {
       return { estado: 'fallo', motivo: 'truncated' };
     }
     if (!esPdfValido(resp.body)) return { estado: 'fallo', motivo: 'not-a-pdf' };

@@ -46,7 +46,26 @@ resolución. Severidad: **alta** bloquea; **media** se corrige o se documenta; *
 - **`idsProcesados` incluye docs con descarga fallida** (van al ledger y se saltan en
   `scrape --resume`; se recuperan con `retry-failed`). Es coherente con el diseño de ledger.
 
+## Ciclo 2 — re-verificación de los 3 jueces
+
+Los 3 jueces re-revisaron el código reparado. **Juez 1: los 8 resueltos, sin regresiones.**
+**Juez 3: los 6 alta/media resueltos, cohesión de capas intacta**, pero halló 2 medias nuevas
+(regresiones de mis fixes). **Juez 2: 8/9 sólidos, pero H1 solo parcialmente cerrado.**
+
+### Medias del ciclo 2 — resueltas
+
+| # | Hallazgo (juez) | Resolución |
+|---|-----------------|------------|
+| C2-1 | (Juez 2) H1 no cerrado para el caso JSF real: `esPaginaResultados` acepta cualquier página con `ViewState`, y la shell vacía por pérdida de sesión TAMBIÉN lo trae → truncamiento tomado como fin. | `paginator.ts`: el **total del sitio es el árbitro**. Si `total` es conocido y `acumulado < total` y llega una página vacía → `PaginaNoParseable` (truncamiento), no fin. La heurística de marcador queda solo para el caso sin total. Test de shell-vacía-antes-del-total. |
+| C2-2 | (Juez 3 + Juez 2) El try/catch de paginación en `run.ts` era demasiado amplio: capturaba errores de IO/store (disco lleno) y los mis-etiquetaba como `paginacion` saliendo con exit 0 (antes exit 1). | `run.ts`: `esErrorDePaginacion()` discrimina; solo los errores de mecánica de paginación (PaginaNoParseable/RetryExhausted/CircuitOpen/HttpError/AccessBlocked/ViewExpired/…) se tratan como fallo controlado; un error de IO **se re-lanza** (propaga → exit ≠ 0). Test de IO que propaga. |
+| C2-3 | (Juez 3) Entradas de ledger `extract`/`paginacion` sin consumidor ni limpieza → acumulación. | `run.ts`: al re-extraer un doc limpio se hace `quitarFallo(id,'extract')`; `retry-failed` avisa de entradas `paginacion` pendientes (se resuelven reanudando `scrape`). Tests. |
+| C2-4 | (Juez 2) Fallo de paginación salía con exit 0 (indistinguible de corrida completa). | `ejecutarScrape` devuelve `{contadores, incompleta}`; `index.ts` fija `process.exitCode=2` si incompleta. Test del flag. |
+
+### Bajas del ciclo 2 — resueltas
+- Indentación del try de descarga corregida; `paginaEnCurso`→`ultimaCompletada` (número correcto).
+- `Content-Length` malformado/duplicado (`"123, 123"`→NaN) ya no rechaza un PDF válido. Test.
+
 ## Estado del gate G6
-Cero hallazgos de severidad alta pendientes; medios resueltos; bajos de bajo costo resueltos.
-Suite: **99 tests verdes**, build y lint limpios. Pendiente: re-corrida de los 3 jueces para
-confirmar (ciclo 2).
+Sin hallazgos de severidad alta pendientes; todas las medias (ciclos 1 y 2) resueltas; bajas de
+bajo costo resueltas. Suite: **104 tests verdes**, build y lint limpios. Pendiente: re-corrida de
+los jueces afectados (Juez 2 y Juez 3) para confirmar el ciclo 2.

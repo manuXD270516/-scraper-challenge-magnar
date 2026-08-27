@@ -81,6 +81,16 @@ describe('Paginator — fin por página vacía o repetida (R-03, sin loop infini
     await expect(juntar(it)).rejects.toBeInstanceOf(PaginaNoParseable);
   });
 
+  it('shell JSF vacía (con ViewState) ANTES del total → PaginaNoParseable, no fin (H1)', async () => {
+    // El servidor degrada a la shell vacía al perder la sesión: TRAE ViewState pero 0 docs.
+    // Como el total (5) no se alcanzó, es truncamiento, no fin de resultados.
+    const shell = '<form id="formBuscador"><input name="javax.faces.ViewState" value="x"/></form>';
+    const src = fakeSource([pagina([uuid(1), uuid(2)], 5), shell]);
+    await expect(juntar(new Paginator(src).paginas({}, { maxPages: null }))).rejects.toBeInstanceOf(
+      PaginaNoParseable,
+    );
+  });
+
   it('esPaginaResultados distingue resultados de página de error', () => {
     expect(esPaginaResultados('<form id="formBuscador"></form>')).toBe(true);
     expect(esPaginaResultados('<input name="javax.faces.ViewState"/>')).toBe(true);

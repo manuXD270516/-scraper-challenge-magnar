@@ -66,10 +66,14 @@ export class Paginator {
       const documentos = extraer(html);
 
       if (documentos.length === 0) {
-        // Distinguir vacío LEGÍTIMO (fin de resultados) de página NO-parseable (error/login/
-        // truncado): si no parece página de resultados, es un fallo, no el fin (H1).
+        // Una página vacía puede ser fin legítimo O una pérdida de sesión/error a mitad de
+        // paginación (el servidor JSF degrada a la shell vacía, que TAMBIÉN trae ViewState).
+        // Árbitro fiable: el total del sitio. Si esperábamos más y no llegó nada, es
+        // truncamiento (H1), no fin.
+        if (total !== null && acumulado < total) throw new PaginaNoParseable(n);
+        // Sin total conocido: si ni siquiera parece página de resultados, es un error claro.
         if (!esPaginaResultados(html)) throw new PaginaNoParseable(n);
-        if (n > desde) return; // fin (b): paginación agotada
+        if (n > desde) return; // fin (b): paginación agotada (best-effort sin total)
         yield { numero: n, documentos, haySiguiente: false };
         return;
       }

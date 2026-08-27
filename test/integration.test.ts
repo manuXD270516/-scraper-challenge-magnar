@@ -81,7 +81,7 @@ describe('integración end-to-end (offline con fakes)', () => {
       fuente((n) => (n === 1 ? pagina([uid(1), uid(2)], 2) : null)),
       async () => ({ status: 200, headers: {}, body: PDF }),
     );
-    const c = await ejecutarScrape({}, cfg(), d);
+    const { contadores: c } = await ejecutarScrape({}, cfg(), d);
     expect(c.documentos).toBe(2);
     expect(c.pdfsOk).toBe(2);
     expect(c.fallos).toBe(0);
@@ -99,7 +99,7 @@ describe('integración end-to-end (offline con fakes)', () => {
           return { status: 200, headers: {}, body: PDF };
         }, retryDeps),
     );
-    const c = await ejecutarScrape({}, cfg(), d);
+    const { contadores: c } = await ejecutarScrape({}, cfg(), d);
     expect(c.documentos).toBe(3);
     expect(c.pdfsOk).toBe(2);
     expect(c.fallos).toBe(1);
@@ -145,14 +145,14 @@ describe('integración end-to-end (offline con fakes)', () => {
       fuente((n) => (n === 1 ? pagina([uid(1), uid(2), uid(3), uid(4)]) : null)),
       async () => ({ status: 200, headers: {}, body: PDF }),
     );
-    const c = await ejecutarScrape({}, cfg({ maxLimit: 2 }), d);
+    const { contadores: c } = await ejecutarScrape({}, cfg({ maxLimit: 2 }), d);
     expect(c.documentos).toBe(2);
   });
 
   it('fallo de paginación se registra en el ledger (etapa paginacion) y no crashea (R-09/R-15)', async () => {
     const src = fuente((n) => (n === 1 ? pagina([uid(1)]) : '<html><body>error</body></html>'));
     const d = deps(src, async () => ({ status: 200, headers: {}, body: PDF }));
-    const c = await ejecutarScrape({}, cfg(), d);
+    const { contadores: c } = await ejecutarScrape({}, cfg(), d);
     expect(c.documentos).toBe(1); // la 1ª página se procesó
     const fallos = await d.store.leerFallos();
     expect(fallos.some((f) => f.etapa === 'paginacion')).toBe(true);
@@ -166,6 +166,40 @@ describe('integración end-to-end (offline con fakes)', () => {
     const fallos = await d.store.leerFallos();
     expect(fallos.some((f) => f.etapa === 'extract')).toBe(true);
     expect(readFileSync(join(dir, 'documentos.jsonl'), 'utf8')).toContain(uid(1));
+  });
+
+  it('un error de IO (escribirLinea) PROPAGA, no se enmascara como paginación', async () => {
+    const src = fuente((n) => (n === 1 ? pagina([uid(1)]) : null));
+    const d = deps(src, async () => ({ status: 200, headers: {}, body: PDF }));
+    d.escribirLinea = async () => {
+      throw new Error('ENOSPC: no space left on device');
+    };
+    await expect(ejecutarScrape({}, cfg(), d)).rejects.toThrow(/ENOSPC/);
+    const fallos = await d.store.leerFallos();
+    expect(fallos.some((f) => f.etapa === 'paginacion')).toBe(false);
+  });
+
+  it('fallo de paginación marca la corrida como INCOMPLETA', async () => {
+    const src = fuente((n) => (n === 1 ? pagina([uid(1)]) : '<html>error</html>'));
+    const d = deps(src, async () => ({ status: 200, headers: {}, body: PDF }));
+    const { incompleta } = await ejecutarScrape({}, cfg(), d);
+    expect(incompleta).toBe(true);
+  });
+
+  it('re-extraer un doc limpio limpia su entrada extract obsoleta (R-10)', async () => {
+    const store = new FileStore(dir);
+    await store.registrarFallo({
+      id: uid(1),
+      url: '',
+      etapa: 'extract',
+      motivo: 'campos faltantes',
+      intentos: 1,
+      timestamp: '2026-01-01T00:00:00Z',
+    });
+    const src = fuente((n) => (n === 1 ? pagina([uid(1)]) : null)); // pagina() trae expediente+fecha → limpio
+    const d = deps(src, async () => ({ status: 200, headers: {}, body: PDF }));
+    await ejecutarScrape({}, cfg(), d);
+    expect((await new FileStore(dir).leerFallos()).some((f) => f.etapa === 'extract')).toBe(false);
   });
 
   it('retry-failed recupera del ledger y limpia la entrada (R-10)', async () => {

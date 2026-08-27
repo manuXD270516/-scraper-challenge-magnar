@@ -124,13 +124,19 @@ async function main(): Promise<void> {
   const criterio: CriterioBusqueda = {};
 
   try {
+    let incompleta = false;
     if (config.comando === 'retry-failed') {
       await ejecutarRetryFailed(config, deps);
     } else {
-      await ejecutarScrape(criterio, config, deps);
+      ({ incompleta } = await ejecutarScrape(criterio, config, deps));
     }
     const n = await generarIndiceCsv(config);
     logger.info(`Índice CSV generado con ${n} documentos.`);
+    if (incompleta) {
+      // La corrida se detuvo por un fallo de paginación: señal explícita para automatización.
+      logger.warn('Corrida INCOMPLETA (fallo de paginación registrado en el ledger). Reanuda con `scrape`.');
+      process.exitCode = 2;
+    }
   } catch (err) {
     logger.error(`Corrida abortada: ${err instanceof Error ? err.message : String(err)}`);
     process.exitCode = 1;

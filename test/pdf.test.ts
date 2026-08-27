@@ -121,6 +121,16 @@ describe('PdfDownloader.descargar (R-04/R-05/R-12)', () => {
     expect(r).toEqual({ estado: 'fallo', motivo: 'truncated' });
   });
 
+  it('Content-Length malformado (duplicado → NaN) no rechaza un PDF válido', async () => {
+    const dl = new PdfDownloader(dir, async () => ({
+      status: 200,
+      headers: { 'content-length': '123, 123' },
+      body: pdfReal,
+    }));
+    const r = await dl.descargar(doc({ expediente: '1' }));
+    expect(r.estado).toBe('ok');
+  });
+
   it('skip idempotente si el PDF ya existe y es válido (sin llamar al fetcher)', async () => {
     const nombre = nombreDescriptivo(doc({ expediente: '1', organo: 'sala', fecha: '2024-01-01' }));
     mkdirSync(dir, { recursive: true });
