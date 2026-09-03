@@ -70,7 +70,7 @@ src/
 │   ├── resilience.ts  # backoff+jitter, CircuitBreaker, RateLimiter — PUROS, sin red
 │   └── pipeline.ts    # ResilientHttpClient: compone rate limiter → breaker → retry
 ├── jsf/
-│   ├── session.ts     # ciclo de vida JSF: ViewState, ViewExpired → re-siembra + replay
+│   ├── session.ts     # ciclo de vida JSF: ViewState; ViewExpired → error tipado (re-siembra en jsfPageSource)
 │   └── forms.ts       # construcción de los formularios de búsqueda/paginación
 ├── scraper/
 │   ├── paginator.ts   # itera páginas (PageSource) con doble condición de fin
@@ -179,7 +179,7 @@ Genera 3 PDFs válidos (`%PDF`, naming descriptivo), `documentos.jsonl` (3 líne
 npm test
 ```
 
-87 tests unitarios/integración **sin red**: secuencia exacta de backoff, transiciones del
+109 tests unitarios/integración **sin red**: secuencia exacta de backoff, transiciones del
 circuit breaker, rate limiter, sesión JSF/ViewState, extracción (con fixtures), naming y
 validación de PDFs, checkpoint/ledger, y una corrida end-to-end con colaboradores fake
 (incluye 429→ledger→continúa y reanudación sin duplicar).

@@ -10,7 +10,7 @@ import { Logger } from './logger.js';
 import { AxiosHttpClient } from './http/client.js';
 import { ResilientHttpClient } from './http/pipeline.js';
 import { CircuitBreaker, realDeps } from './http/resilience.js';
-import { JsfSession } from './jsf/session.js';
+import { JsfSession, esViewExpired } from './jsf/session.js';
 import { JsfPageSource } from './scraper/jsfPageSource.js';
 import { Paginator } from './scraper/paginator.js';
 import { PdfDownloader, type PdfFetcher } from './scraper/pdf.js';
@@ -58,6 +58,9 @@ async function construirDeps(config: Config, logger: Logger): Promise<RunDeps> {
     const client = new ResilientHttpClient(inner, breaker, realDeps, {
       minIntervalMs: config.minIntervalMs,
       jitterRatio: config.jitterRatio,
+      // Mojarra sirve ViewExpiredException como 500: debe llegar a la sesión (que re-siembra),
+      // no tratarse como error de red reintentable. La capa HTTP no conoce JSF; se le inyecta.
+      dejarPasar: esViewExpired,
     });
     const session = new JsfSession({ client, seedUrl: inicioUrlDe(config.baseUrl) });
     const source = new JsfPageSource(session, inicioUrlDe(config.baseUrl), config.baseUrl);

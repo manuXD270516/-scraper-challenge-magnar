@@ -42,8 +42,11 @@ export class Paginator {
   /**
    * Emite páginas perezosamente. Termina por doble condición (R-03):
    *  (a) se alcanzó el total declarado por el sitio, o
-   *  (b) página vacía o repetida (mismo conjunto de ids que la anterior).
-   * `maxPages` acota; nunca hay loop infinito (repetición/vacío siempre terminan).
+   *  (b) página vacía legítima, o página que no aporta ningún id nuevo respecto a TODA la
+   *      corrida (cubre repeticiones y ciclos de cualquier período).
+   * Una página vacía cuando aún faltaban docs según el total, o una página que no parece de
+   * resultados, es un fallo (`PaginaNoParseable`), no el fin. `maxPages` acota; la terminación
+   * está garantizada por maxPages, fuente agotada o ausencia de ids nuevos.
    */
   async *paginas(
     criterio: CriterioBusqueda,

@@ -25,7 +25,7 @@ interface JsfSession {
   readonly viewState: string;
   /** POST del form añadiendo el ViewState vigente; renueva viewState desde la respuesta. */
   submit(url: string, form: Record<string,string>): Promise<HttpResponse>;
-  /** Re-siembra tras ViewExpired y reejecuta el último paso (máx 2 veces). */
+  /** Re-siembra la sesión (GET inicial). La re-ejecución de la secuencia completa tras ViewExpired la orquesta JsfPageSource (criterio 7). */
   reset(): Promise<void>;
 }
 ```

@@ -37,16 +37,31 @@ function lanzarSiLimitante(resp: { status: number; headers: Record<string, strin
   }
 }
 
+export interface OpcionesResiliencia {
+  minIntervalMs: number;
+  jitterRatio: number;
+  /**
+   * Hook genérico: si devuelve true para una respuesta de texto, ésta se entrega tal cual al
+   * llamador aunque su status sea 5xx (no se reintenta ni cuenta para el breaker). Lo configura
+   * la capa que sabe interpretar el cuerpo (p. ej. JSF sirve ViewExpiredException como 500 y la
+   * sesión debe verla para re-sembrar, no reintentarla como error de red). Esta capa NO conoce
+   * JSF: solo ofrece el punto de extensión.
+   */
+  dejarPasar?: (resp: HttpResponse) => boolean;
+}
+
 export class ResilientHttpClient implements HttpClient {
   private readonly rate: RateLimiter;
+  private readonly dejarPasar: (resp: HttpResponse) => boolean;
 
   constructor(
     private readonly inner: HttpClient,
     private readonly breaker: CircuitBreaker,
     private readonly deps: RetryDeps,
-    opts: { minIntervalMs: number; jitterRatio: number },
+    opts: OpcionesResiliencia,
   ) {
     this.rate = new RateLimiter(opts.minIntervalMs, opts.jitterRatio, deps);
+    this.dejarPasar = opts.dejarPasar ?? (() => false);
   }
 
   private async ejecutar<T>(op: () => Promise<T>): Promise<T> {
@@ -62,7 +77,7 @@ export class ResilientHttpClient implements HttpClient {
   async get(url: string, headers?: Record<string, string>): Promise<HttpResponse> {
     return this.ejecutar(async () => {
       const resp = await this.inner.get(url, headers);
-      lanzarSiLimitante(resp);
+      if (!this.dejarPasar(resp)) lanzarSiLimitante(resp);
       return resp;
     });
   }
@@ -74,7 +89,7 @@ export class ResilientHttpClient implements HttpClient {
   ): Promise<HttpResponse> {
     return this.ejecutar(async () => {
       const resp = await this.inner.postForm(url, form, headers);
-      lanzarSiLimitante(resp);
+      if (!this.dejarPasar(resp)) lanzarSiLimitante(resp);
       return resp;
     });
   }

@@ -1,6 +1,7 @@
 /**
  * jsf/session.ts — Ciclo de vida JSF: init, parse/renovación de ViewState, detección de
- * ViewExpired → reinit transparente + replay. Ancla: doc 01 §D-1. Spec: specs/F1_sesion_jsf.md.
+ * ViewExpired (lanza `ViewExpired`; la re-siembra de la secuencia completa la hace
+ * JsfPageSource, que conoce init → búsqueda → página). Ancla: doc 01 §D-1. Spec: F1 §7.
  *
  * Nota (R-20): scrapear JSF es reproducir una conversación con estado. El ViewState es un
  * token opaco que el servidor renueva en CADA respuesta; enviarlo viejo (o perder la cookie

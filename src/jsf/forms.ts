@@ -19,6 +19,9 @@ export const PAGE_SIZE = 21;
 export function formBusqueda(criterio: CriterioBusqueda, pagina = 1): Record<string, string> {
   const form: Record<string, string> = {
     formBuscador: 'formBuscador',
+    // clientId del botón pulsado: es lo que JSF (mojarra.jsfcljs) usa para disparar la acción
+    // del componente. Sin él, Mojarra re-renderiza la vista sin ejecutar la búsqueda.
+    'formBuscador:j_idt69': 'formBuscador:j_idt69',
     forward: 'buscar',
     // Tokens posicionales observados en el onclick del botón buscar (hipótesis).
     'formBuscador:j_idt71': String(PAGE_SIZE),
