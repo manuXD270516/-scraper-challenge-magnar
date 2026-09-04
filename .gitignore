@@ -6,6 +6,9 @@ failed.json
 *.log
 .env
 
+# Configuracion local de la app (vista previa): contiene rutas personales, no se publica.
+.claude/
+
 # Insumos privados: no se publican (ver CLAUDE.md, nota de publicación).
 # Se retiran de este ignore solo si se decide versionarlos en un remoto privado.
 docs/insumos/
